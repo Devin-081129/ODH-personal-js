@@ -1,4 +1,4 @@
-// POS + EN definition; replace headword with "the word" even inside HTML
+// Collins EN->CN (POS + EN definition with <b>word</b> + CN translation)
 class builtin_encn_Collins {
   constructor(options){ this.options=options; this.maxexample=2; this.word=''; }
 
@@ -13,56 +13,69 @@ class builtin_encn_Collins {
 
   async findTerm(word){
     this.word=word;
-    const ws = await api.deinflect(word) || [];
+    const stem = await api.deinflect(word) || [];
     if (word.toLowerCase()!==word){
       const lc = word.toLowerCase();
-      const lcws = await api.deinflect(lc) || [];
-      return (await Promise.all([this.findCollins(word), this.findCollins(ws), this.findCollins(lc), this.findCollins(lcws)])).flat().filter(Boolean);
+      const lcStem = await api.deinflect(lc) || [];
+      const rs = await Promise.all([this.findCollins(word), this.findCollins(stem), this.findCollins(lc), this.findCollins(lcStem)]);
+      return rs.flat().filter(Boolean);
     }
-    return (await Promise.all([this.findCollins(word), this.findCollins(ws)])).flat().filter(Boolean);
+    const rs = await Promise.all([this.findCollins(word), this.findCollins(stem)]);
+    return rs.flat().filter(Boolean);
   }
 
-  // --- helper: replace headword inside HTML text nodes ---
+  // 将定义内的词头替换为加粗的 "word"
   replaceHeadwordHTML(html, headword){
     const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const re = new RegExp(`\\b${esc(headword)}\\b`, 'gi');
-    try {
+    try{
       const div = document.createElement('div');
       div.innerHTML = html;
       const walker = document.createTreeWalker(div, NodeFilter.SHOW_TEXT, null);
-      let node;
-      while ((node = walker.nextNode())) {
-        node.nodeValue = node.nodeValue.replace(re, 'the word');
+      const toProcess = [];
+      let n;
+      while ((n = walker.nextNode())) toProcess.push(n);
+      for (const node of toProcess){
+        if (!re.test(node.nodeValue)) continue;
+        re.lastIndex = 0; // reset
+        const parts = node.nodeValue.split(re);
+        if (parts.length <= 1) continue;
+        const frag = document.createDocumentFragment();
+        for (let i=0;i<parts.length;i++){
+          if (parts[i]) frag.appendChild(document.createTextNode(parts[i]));
+          if (i < parts.length-1){
+            const b = document.createElement('b');
+            b.textContent = 'word';
+            frag.appendChild(b);
+          }
+        }
+        node.parentNode.replaceChild(frag, node);
       }
       return div.innerHTML;
-    } catch (e) {
-      // fallback（无 DOM 环境时）
-      return html
-        .replace(re, 'the word')
-        .replace(new RegExp(`<\\s*b\\s*>\\s*${esc(headword)}\\s*<\\s*/\\s*b\\s*>`, 'gi'), 'the word')
-        .replace(new RegExp(`<\\s*i\\s*>\\s*${esc(headword)}\\s*<\\s*/\\s*i\\s*>`, 'gi'), 'the word');
+    }catch(e){
+      // 无 DOM 环境时的降级：直接替换为 HTML 片段
+      return html.replace(re, '<b>word</b>');
     }
   }
 
   async findCollins(word){
     if (!word) return [];
     let result={};
-    try { result = JSON.parse(await api.getBuiltin('collins', word)); }
-    catch { return []; }
+    try{ result = JSON.parse(await api.getBuiltin('collins', word)); } catch { return []; }
     if (!result) return [];
 
     const expression = word;
-    let reading='';
-    if (result.readings && result.readings.length>0) reading = `/${result.readings[0]}/`;
-
+    const reading = (result.readings && result.readings.length>0) ? `/${result.readings[0]}/` : '';
     const defs = result.defs || [];
+
     const definitions = [];
     for (const def of defs){
       const pos = def.pos_en ? `<span class="pos">${def.pos_en}</span>` : '';
       let eng = def.def_en ? this.replaceHeadwordHTML(def.def_en, expression) : '';
       eng = eng ? `<span class="eng_tran">${eng}</span>` : '';
-      const line = `${pos}<span class="tran">${eng}</span>`;
-      if (pos || eng) definitions.push(line);
+      const chn = def.def_cn ? `<span class="chn_tran">${def.def_cn}</span>` : '';
+      const line = `${pos}<span class="tran">${eng}${chn}</span>`;
+      if (pos || eng || chn) definitions.push(line);
     }
 
     const css = this.renderCSS();
@@ -74,7 +87,8 @@ class builtin_encn_Collins {
 <style>
   span.pos{ text-transform:lowercase;font-size:0.9em;margin-right:5px;padding:2px 4px;color:#fff;background:#0d47a1;border-radius:3px;}
   span.tran{ margin:0; padding:0;}
-  span.eng_tran{ margin-right:3px; padding:0;}
+  span.eng_tran{ margin-right:6px; }
+  span.chn_tran{ color:#0d47a1; }
 </style>`;
   }
 }
