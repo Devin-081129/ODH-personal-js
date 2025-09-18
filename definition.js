@@ -1,4 +1,4 @@
-// Collins EN->CN Dictionary (only Chinese definitions)
+// Collins EN->CN Dictionary (POS + EN definition; replace headword with "the word")
 class builtin_encn_Collins {
     constructor(options) {
         this.options = options;
@@ -7,9 +7,9 @@ class builtin_encn_Collins {
     }
 
     async displayName() {
-        let locale = await api.locale();
-        if (locale.indexOf('CN') != -1) return '柯林斯英汉双解(内置)';
-        if (locale.indexOf('TW') != -1) return '柯林斯英漢雙解(內置)';
+        const locale = await api.locale();
+        if (locale.indexOf('CN') !== -1) return '柯林斯英汉双解(内置)';
+        if (locale.indexOf('TW') !== -1) return '柯林斯英漢雙解(內置)';
         return 'Collins EN->CN Dictionary((builtin))';
     }
 
@@ -21,87 +21,62 @@ class builtin_encn_Collins {
     async findTerm(word) {
         this.word = word;
         let list = [];
-        let word_stem = await api.deinflect(word) || [];
-        if (word.toLowerCase() != word) {
-            let lowercase = word.toLowerCase();
-            let lowercase_stem = await api.deinflect(lowercase) || [];
+        const word_stem = await api.deinflect(word) || [];
+        if (word.toLowerCase() !== word) {
+            const lowercase = word.toLowerCase();
+            const lowercase_stem = await api.deinflect(lowercase) || [];
             list = [word, word_stem, lowercase, lowercase_stem];
         } else {
             list = [word, word_stem];
         }
-        let promises = list.map((item) => this.findCollins(item));
-        let results = await Promise.all(promises);
+        const results = await Promise.all(list.map((w) => this.findCollins(w)));
         return [].concat(...results).filter(x => x);
     }
 
     async findCollins(word) {
-        const maxexample = this.maxexample;
         let notes = [];
-
         if (!word) return notes;
+
         let result = {};
         try {
             result = JSON.parse(await api.getBuiltin('collins', word));
         } catch (err) {
             return [];
         }
-
-        // get Collins Data
         if (!result) return notes;
-        let expression = word;
+
+        const expression = word;
         let reading = '';
         if (result.readings && result.readings.length > 0) {
             reading = `/${result.readings[0]}/`;
         }
 
-        let defs = result.defs;
+        const defs = result.defs || [];
+        const escapeRegExp = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const headwordRe = new RegExp(escapeRegExp(expression), 'gi');
 
-        // Extract only the Chinese translations (def_cn)
-        let definitions = [];
+        // POS + EN definition only; replace headword with "the word"
+        const definitions = [];
         for (const def of defs) {
-            let definition = '';
-            let chn_tran = def.def_cn;
-            if (chn_tran) {
-                definition = `<span class="chn_tran">${chn_tran}</span>`;
-            }
-
-            // make example sentence segment, but skip if maxexample is 0
-            if (def.ext && def.ext.length > 0 && maxexample > 0) {
-                definition += '<ul class="sents">';
-                for (const [idx, ex] of def.ext.entries()) {
-                    if (idx > maxexample - 1) break; // to control only n example sentences defined in option.
-                    let chn_sent = ex.ext_cn;
-                    definition += `<li class='sent'><span class='chn_sent'>${chn_sent}</span></li>`;
-                }
-                definition += '</ul>';
-            }
-
-            definitions.push(definition);
+            const pos = def.pos_en ? `<span class="pos">${def.pos_en}</span>` : '';
+            let eng = def.def_en ? def.def_en.replace(headwordRe, 'the word') : '';
+            eng = eng ? `<span class="eng_tran">${eng}</span>` : '';
+            const line = `${pos}<span class="tran">${eng}</span>`;
+            if (pos || eng) definitions.push(line);
         }
 
-        let css = this.renderCSS();
-        notes.push({
-            css,
-            expression,
-            reading,
-            definitions
-        });
-
+        const css = this.renderCSS();
+        notes.push({ css, expression, reading, definitions });
         return notes;
     }
 
     renderCSS() {
-        let css = `
-            <style>
-                span.star {color: #FFBB00;}
-                span.pos  {text-transform:lowercase; font-size:0.9em; margin-right:5px; padding:2px 4px; color:white; background-color:#0d47a1; border-radius:3px;}
-                span.tran {margin:0; padding:0;}
-                span.eng_tran {margin-right:3px; padding:0;}
-                span.chn_tran {color:#0d47a1;}
-                ul.sents {font-size:0.8em; list-style:square inside; margin:3px 0;padding:5px;background:rgba(13,71,161,0.1); border-radius:5px;}
-                li.sent  {margin:0; padding:0;}
-                span.chn_sent {color:#0d47a1;}
-            </style>`;
-        return css;
+        return `
+<style>
+  span.pos{ text-transform:lowercase;font-size:0.9em;margin-right:5px;padding:2px 4px;color:#fff;background:#0d47a1;border-radius:3px;}
+  span.tran{ margin:0; padding:0;}
+  span.eng_tran{ margin-right:3px; padding:0;}
+</style>`;
     }
 }
+
