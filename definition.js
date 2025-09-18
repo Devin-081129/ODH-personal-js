@@ -1,12 +1,12 @@
-// Collins EN->CN (POS + EN definition with <b>word</b> + CN translation)
-class builtin_encn_Collins {
+// Collins EN->CN (POS + EN with <b>word</b> + CN) — no-conflict class name
+class my_encn_Collins_CN_ENWord_CN {
   constructor(options){ this.options=options; this.maxexample=2; this.word=''; }
 
   async displayName(){
     const locale = await api.locale();
-    if (locale.indexOf('CN')!==-1) return '柯林斯英汉双解(内置)';
-    if (locale.indexOf('TW')!==-1) return '柯林斯英漢雙解(內置)';
-    return 'Collins EN->CN Dictionary((builtin))';
+    if (locale.indexOf('CN')!==-1) return 'Collins：词性+英文<b>word</b>+中文';
+    if (locale.indexOf('TW')!==-1) return 'Collins：詞性+英文<b>word</b>+中文';
+    return 'Collins EN->CN (POS + <b>word</b> + CN)';
   }
 
   setOptions(options){ this.options=options; this.maxexample=options.maxexample; }
@@ -17,44 +17,57 @@ class builtin_encn_Collins {
     if (word.toLowerCase()!==word){
       const lc = word.toLowerCase();
       const lcStem = await api.deinflect(lc) || [];
-      const rs = await Promise.all([this.findCollins(word), this.findCollins(stem), this.findCollins(lc), this.findCollins(lcStem)]);
+      const rs = await Promise.all([
+        this.findCollins(word), this.findCollins(stem),
+        this.findCollins(lc),   this.findCollins(lcStem)
+      ]);
       return rs.flat().filter(Boolean);
     }
     const rs = await Promise.all([this.findCollins(word), this.findCollins(stem)]);
     return rs.flat().filter(Boolean);
   }
 
-  // 将定义内的词头替换为加粗的 "word"
+  // 把定义里出现的词头替换为 <b>word</b>；并把已有的 "the word" 也统一成 <b>word</b>
   replaceHeadwordHTML(html, headword){
     const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const re = new RegExp(`\\b${esc(headword)}\\b`, 'gi');
+    // 字母边界匹配（含大小写）
+    const re = new RegExp(`(?<![A-Za-z])${esc(headword)}(?![A-Za-z])`, 'gi');
     try{
       const div = document.createElement('div');
       div.innerHTML = html;
+
+      // 先把已有的粗体/斜体包裹的词头扁平化，避免嵌套 <b>
+      div.innerHTML = div.innerHTML
+        .replace(new RegExp(`<\\s*(b|i)\\s*>\\s*${esc(headword)}\\s*<\\s*/\\s*\\1\\s*>`, 'gi'), headword);
+
+      // 遍历纯文本节点做替换
       const walker = document.createTreeWalker(div, NodeFilter.SHOW_TEXT, null);
-      const toProcess = [];
-      let n;
-      while ((n = walker.nextNode())) toProcess.push(n);
-      for (const node of toProcess){
-        if (!re.test(node.nodeValue)) continue;
-        re.lastIndex = 0; // reset
-        const parts = node.nodeValue.split(re);
-        if (parts.length <= 1) continue;
-        const frag = document.createDocumentFragment();
-        for (let i=0;i<parts.length;i++){
-          if (parts[i]) frag.appendChild(document.createTextNode(parts[i]));
-          if (i < parts.length-1){
-            const b = document.createElement('b');
-            b.textContent = 'word';
-            frag.appendChild(b);
+      const nodes = [];
+      let n; while ((n = walker.nextNode())) nodes.push(n);
+      for (const node of nodes){
+        if (re.test(node.nodeValue)){
+          const parts = node.nodeValue.split(re);
+          const frag = document.createDocumentFragment();
+          for (let i=0;i<parts.length;i++){
+            if (parts[i]) frag.appendChild(document.createTextNode(parts[i]));
+            if (i < parts.length-1){
+              const b = document.createElement('b');
+              b.textContent = 'word';
+              frag.appendChild(b);
+            }
           }
+          node.parentNode.replaceChild(frag, node);
         }
-        node.parentNode.replaceChild(frag, node);
       }
-      return div.innerHTML;
+
+      // 兜底：把已有的 "the word" 也统一成 <b>word</b>
+      const s = div.innerHTML.replace(/\bthe\s+word\b/gi, '<b>word</b>');
+      return s;
     }catch(e){
-      // 无 DOM 环境时的降级：直接替换为 HTML 片段
-      return html.replace(re, '<b>word</b>');
+      // 无 DOM 环境时的纯字符串兜底
+      return html
+        .replace(re, '<b>word</b>')
+        .replace(/\bthe\s+word\b/gi, '<b>word</b>');
     }
   }
 
