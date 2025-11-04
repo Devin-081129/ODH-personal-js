@@ -89,7 +89,7 @@ class enen_WordMask {
     }
 
     mask(text, headwords) {
-        const replacement = 'word';
+        const replacement = '<b>word</b>';
         return headwords.reduce((result, hw) => {
             if (!hw) return result;
             const escaped = this.escapeRegex(hw);
