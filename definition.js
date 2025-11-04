@@ -1,55 +1,72 @@
 /* global api */
 
-class en_CustomWordMask {
+class enen_WordMask {
     constructor(options = {}) {
         this.options = options;
         this.word = '';
+        this.maxexample = options.maxexample || 2;
     }
 
     async displayName() {
-        return 'Word Mask Dictionary';
+        return 'Word Mask Dictionary (EN→EN)';
     }
 
     setOptions(options) {
         this.options = options;
+        this.maxexample = options.maxexample || this.maxexample;
     }
 
-    async findTerm(word = '') {
-        this.word = word;
-        if (!word.trim()) return [];
-        const notes = await this.fetchDefinitions(word.trim());
-        return notes.filter(Boolean);
+    findTerm(word = '') {
+        return new Promise((resolve) => {
+            this.word = word;
+            const query = word.trim();
+            if (!query) {
+                resolve([]);
+                return;
+            }
+            this.fetchDefinitions(query)
+                .then(notes => resolve(notes.filter(Boolean)))
+                .catch(() => resolve([]));
+        });
     }
 
-    async fetchDefinitions(word) {
+    fetchDefinitions(word) {
         const endpoint = `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`;
-        try {
-            const raw = await api.fetch(endpoint);
-            const payload = JSON.parse(raw);
-            if (!Array.isArray(payload) || payload.length === 0) return [];
-            const entry = payload[0];
-            const expression = entry.word || word;
-            const reading = this.pickPhonetic(entry);
-            const audios = this.collectAudios(entry);
-            const definitions = this.buildDefinitions(entry, expression);
-            if (!definitions.length) return [];
-            const css = `
-                <style>
-                    .odh-word-mask .pos {text-transform: lowercase; margin-right: 6px; padding: 2px 6px; border-radius: 4px; color: #fff; background-color: #0d47a1; font-size: 0.85em;}
-                    .odh-word-mask ul {margin: 4px 0 10px; padding-left: 20px;}
-                    .odh-word-mask li {margin-bottom: 4px; line-height: 1.4;}
-                    .odh-word-mask .example {display: block; margin-top: 2px; font-size: 0.85em; color: #555;}
-                </style>`;
-            return [{
-                css,
-                expression,
-                reading,
-                definitions,
-                audios
-            }];
-        } catch (error) {
-            return [];
-        }
+        return new Promise(async (resolve, reject) => {
+            try {
+                const raw = await api.fetch(endpoint);
+                const payload = JSON.parse(raw);
+                if (!Array.isArray(payload) || payload.length === 0) {
+                    resolve([]);
+                    return;
+                }
+                const entry = payload[0];
+                const expression = entry.word || word;
+                const reading = this.pickPhonetic(entry);
+                const audios = this.collectAudios(entry);
+                const definitions = this.buildDefinitions(entry, expression);
+                if (!definitions.length) {
+                    resolve([]);
+                    return;
+                }
+                const css = `
+                    <style>
+                        .odh-word-mask .pos {text-transform: lowercase; margin-right: 6px; padding: 2px 6px; border-radius: 4px; color: #fff; background-color: #0d47a1; font-size: 0.85em;}
+                        .odh-word-mask ul {margin: 4px 0 10px; padding-left: 20px;}
+                        .odh-word-mask li {margin-bottom: 4px; line-height: 1.4;}
+                        .odh-word-mask .example {display: block; margin-top: 2px; font-size: 0.85em; color: #555;}
+                    </style>`;
+                resolve([{
+                    css,
+                    expression,
+                    reading,
+                    definitions,
+                    audios
+                }]);
+            } catch (error) {
+                reject(error);
+            }
+        });
     }
 
     buildDefinitions(entry, expression) {
@@ -73,18 +90,17 @@ class en_CustomWordMask {
     }
 
     mask(text, headwords) {
-        const replacement = '‘word’';
+        const replacement = 'word';
         return headwords.reduce((result, hw) => {
             if (!hw) return result;
-            const escaped = hw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            const boundaryPattern = new RegExp(`\\b${escaped}\\b`, 'gi');
-            let masked = result.replace(boundaryPattern, replacement);
-            if (masked === result) {
-                const fallbackPattern = new RegExp(escaped, 'gi');
-                masked = masked.replace(fallbackPattern, replacement);
-            }
-            return masked;
+            const escaped = this.escapeRegex(hw);
+            const pattern = new RegExp(`\\b${escaped}(?:'s|s|es|ed|ing|er|est)?\\b`, 'gi');
+            return result.replace(pattern, replacement);
         }, text);
+    }
+
+    escapeRegex(text) {
+        return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
 
     pickPhonetic(entry) {
