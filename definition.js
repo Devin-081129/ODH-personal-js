@@ -17,55 +17,54 @@ class enen_WordMask {
     }
 
     findTerm(word = '') {
-        return new Promise((resolve) => {
+        return new Promise((resolve, reject) => {
             this.word = word;
             const query = word.trim();
             if (!query) {
                 resolve([]);
                 return;
             }
-            this.fetchDefinitions(query)
-                .then(notes => resolve(notes.filter(Boolean)))
-                .catch(() => resolve([]));
-        });
-    }
-
-    fetchDefinitions(word) {
-        const endpoint = `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`;
-        return new Promise(async (resolve, reject) => {
-            try {
-                const raw = await api.fetch(endpoint);
-                const payload = JSON.parse(raw);
-                if (!Array.isArray(payload) || payload.length === 0) {
-                    resolve([]);
-                    return;
-                }
-                const entry = payload[0];
-                const expression = entry.word || word;
-                const reading = this.pickPhonetic(entry);
-                const audios = this.collectAudios(entry);
-                const definitions = this.buildDefinitions(entry, expression);
-                if (!definitions.length) {
-                    resolve([]);
-                    return;
-                }
-                const css = `
-                    <style>
-                        .odh-word-mask .pos {text-transform: lowercase; margin-right: 6px; padding: 2px 6px; border-radius: 4px; color: #fff; background-color: #0d47a1; font-size: 0.85em;}
-                        .odh-word-mask ul {margin: 4px 0 10px; padding-left: 20px;}
-                        .odh-word-mask li {margin-bottom: 4px; line-height: 1.4;}
-                        .odh-word-mask .example {display: block; margin-top: 2px; font-size: 0.85em; color: #555;}
-                    </style>`;
-                resolve([{
-                    css,
-                    expression,
-                    reading,
-                    definitions,
-                    audios
-                }]);
-            } catch (error) {
-                reject(error);
-            }
+            const endpoint = `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(query)}`;
+            api.fetch(endpoint)
+                .then(raw => {
+                    let payload;
+                    try {
+                        payload = JSON.parse(raw);
+                    } catch (err) {
+                        reject(err);
+                        return;
+                    }
+                    if (!Array.isArray(payload) || payload.length === 0) {
+                        resolve([]);
+                        return;
+                    }
+                    const entry = payload[0];
+                    const expression = entry.word || query;
+                    const reading = this.pickPhonetic(entry);
+                    const audios = this.collectAudios(entry);
+                    const definitions = this.buildDefinitions(entry, expression);
+                    if (!definitions.length) {
+                        resolve([]);
+                        return;
+                    }
+                    const css = `
+                        <style>
+                            .odh-word-mask .pos {text-transform: lowercase; margin-right: 6px; padding: 2px 6px; border-radius: 4px; color: #fff; background-color: #0d47a1; font-size: 0.85em;}
+                            .odh-word-mask ul {margin: 4px 0 10px; padding-left: 20px;}
+                            .odh-word-mask li {margin-bottom: 4px; line-height: 1.4;}
+                            .odh-word-mask .example {display: block; margin-top: 2px; font-size: 0.85em; color: #555;}
+                        </style>`;
+                    resolve([{
+                        css,
+                        expression,
+                        reading,
+                        definitions,
+                        audios
+                    }]);
+                })
+                .catch(err => {
+                    reject(err);
+                });
         });
     }
 
