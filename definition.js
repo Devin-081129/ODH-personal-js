@@ -74,11 +74,15 @@ class enen_WordMask {
         for (const meaning of entry.meanings || []) {
             const pos = meaning.partOfSpeech ? `<span class="pos">${meaning.partOfSpeech}</span>` : '';
             const items = [];
+            let exCount = 0;
             for (const def of meaning.definitions || []) {
                 if (!def.definition) continue;
                 const maskedDef = this.mask(def.definition, headwords);
-                const example = def.example ? this.mask(def.example, headwords) : '';
-                const exampleHtml = example ? `<span class="example">${example}</span>` : '';
+                let exampleHtml = '';
+                if (def.example && exCount < this.maxexample) {
+                    exampleHtml = `<span class="example">${this.mask(def.example, headwords)}</span>`;
+                    exCount++;
+                }
                 items.push(`<li>${maskedDef}${exampleHtml}</li>`);
             }
             if (items.length) {
@@ -89,7 +93,7 @@ class enen_WordMask {
     }
 
     mask(text, headwords) {
-        const replacement = '<b>word</b>';
+        const replacement = 'word';
         return headwords.reduce((result, hw) => {
             if (!hw) return result;
             const escaped = this.escapeRegex(hw);
@@ -99,7 +103,7 @@ class enen_WordMask {
     }
 
     escapeRegex(text) {
-        return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return text.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');
     }
 
     pickPhonetic(entry) {
