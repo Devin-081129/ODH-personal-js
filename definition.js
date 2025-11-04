@@ -73,14 +73,15 @@ class en_CustomWordMask {
     }
 
     mask(text, headwords) {
+        const replacement = '‘word’';
         return headwords.reduce((result, hw) => {
             if (!hw) return result;
             const escaped = hw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             const boundaryPattern = new RegExp(`\\b${escaped}\\b`, 'gi');
-            let masked = result.replace(boundaryPattern, 'word');
+            let masked = result.replace(boundaryPattern, replacement);
             if (masked === result) {
                 const fallbackPattern = new RegExp(escaped, 'gi');
-                masked = masked.replace(fallbackPattern, 'word');
+                masked = masked.replace(fallbackPattern, replacement);
             }
             return masked;
         }, text);
